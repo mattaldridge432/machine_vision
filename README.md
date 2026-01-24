@@ -1,7 +1,9 @@
 # machine_vision
 
 -Machine Vision for automated litter event detection with litter event video clip exports.
+
 -Please contribute comments, feedback and improved versions so that we can solve the litter problem.
+
 
 
 -kbtcam uses a camera feed
