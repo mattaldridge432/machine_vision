@@ -4,6 +4,7 @@
 
 -Please contribute comments, feedback and improved versions so that we can solve the litter problem.
 
+-These programs and any other improved versions can be provided (at no cost) to local authorities (police, local council, county council) as a deterrent for them to use when solving the litter problem.
 
 
 -kbtcam_v3.py uses a camera feed
