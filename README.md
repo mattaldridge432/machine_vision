@@ -14,4 +14,4 @@
 
 -vision_system_2.py and vision_client_2.py work together (not yet developed or tested fully).
 
--vehicle and vehicle_client work together (untested).
+-vehicle.py and vehicle_client.py work together (untested).
