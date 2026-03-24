@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🪲 Litter Bug Splat!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+  #canvas { display: block; }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 18px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+    pointer-events: none; z-index: 10;
+  }
+  #hud .stat { color: #fff; font-size: 15px; font-weight: 700; text-shadow: 0 0 8px #0ff; }
+  #hud .stat span { color: #0ff; font-size: 20px; }
+  #levelBadge {
+    background: linear-gradient(135deg, #ff6b00, #ffcc00);
+    color: #000; padding: 4px 14px; border-radius: 20px;
+    font-size: 16px; font-weight: 900; text-shadow: none;
+  }
+  #msgBox {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(0,0,0,0.92); border: 2px solid #0ff;
+    color: #fff; padding: 30px 44px; border-radius: 18px;
+    text-align: center; z-index: 100; display: none; max-width: 420px;
+  }
+  #msgBox h2 { font-size: 28px; color: #ffcc00; margin-bottom: 12px; }
+  #msgBox p  { font-size: 15px; line-height: 1.6; color: #ccc; margin-bottom: 18px; }
+  #msgBox .prize { font-size: 52px; margin: 10px 0; }
+  #msgBtn {
+    background: linear-gradient(135deg,#ff6b00,#ffcc00);
+    border: none; color: #000; font-size: 16px; font-weight: 900;
+    padding: 10px 34px; border-radius: 30px; cursor: pointer;
+    pointer-events: all;
+  }
+  #msgBtn:hover { filter: brightness(1.2); }
+
+  /* D-PAD */
+  #controls {
+    position: fixed; bottom: 20px; left: 20px;
+    display: grid; grid-template-columns: 52px 52px 52px;
+    grid-template-rows: 52px 52px 52px; gap: 4px; z-index: 20;
+    user-select: none;
+  }
+  .dpad-btn {
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 10px; color: #fff; font-size: 22px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dpad-btn:active, .dpad-btn.pressed { background: rgba(0,255,255,0.3); border-color: #0ff; }
+  #dUp    { grid-column: 2; grid-row: 1; }
+  #dLeft  { grid-column: 1; grid-row: 2; }
+  #dCenter{ grid-column: 2; grid-row: 2; font-size:14px; }
+  #dRight { grid-column: 3; grid-row: 2; }
+  #dDown  { grid-column: 2; grid-row: 3; }
+  /* diagonal buttons */
+  #dUL { grid-column:1; grid-row:1; font-size:16px; }
+  #dUR { grid-column:3; grid-row:1; font-size:16px; }
+  #dDL { grid-column:1; grid-row:3; font-size:16px; }
+  #dDR { grid-column:3; grid-row:3; font-size:16px; }
+
+  /* action buttons */
+  #actions {
+    position: fixed; bottom: 20px; right: 20px;
+    display: flex; flex-direction: column; gap: 8px; z-index: 20;
+  }
+  .act-btn {
+    padding: 10px 18px; border-radius: 30px; border: none;
+    font-size: 14px; font-weight: 800; cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  #btnShoot  { background: linear-gradient(135deg,#ff2244,#ff6600); color:#fff; }
+  #btnSplat  { background: linear-gradient(135deg,#00cc44,#00ff99); color:#000; }
+  #btnPickup { background: linear-gradient(135deg,#3399ff,#00ccff); color:#fff; }
+
+  #miniLog {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #0ff; padding: 6px 16px;
+    border-radius: 20px; font-size: 13px; z-index: 20;
+    pointer-events: none; opacity: 0; transition: opacity 0.3s;
+    white-space: nowrap;
+  }
+
+  #instructions {
+    position: fixed; top: 60px; right: 14px;
+    background: rgba(0,0,0,0.75); color: #aaa;
+    padding: 10px 14px; border-radius: 10px; font-size: 11px;
+    line-height: 1.7; z-index: 10; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  #instructions b { color: #ffcc00; }
+
+  #litter-bar {
+    position: fixed; bottom: 6px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); border-radius: 20px; padding: 3px 12px;
+    font-size: 12px; color: #0ff; z-index: 20; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="stat">⭐ <span id="score">0</span></div>
+  <div id="levelBadge">LEVEL <span id="lvlNum">1</span></div>
+  <div class="stat">🪲 <span id="bugsLeft">0</span> bugs &nbsp; 🗑️ <span id="litterCount">0</span> litter</div>
+</div>
+
+<!-- Instructions -->
+<div id="instructions">
+  <b>HOW TO PLAY</b><br>
+  🗑️ Walk over litter to <b>collect</b> it<br>
+  🪲 Carry litter → <b>SPLAT</b> bug (catch it)<br>
+  🎫 Or <b>SHOOT</b> ticket from distance<br>
+  🚶 Avoid hitting <b>pedestrians</b> (−30pts!)<br>
+  🏆 Clear all bugs to win the level
+</div>
+
+<!-- D-Pad -->
+<div id="controls">
+  <button class="dpad-btn" id="dUL">↖</button>
+  <button class="dpad-btn" id="dUp">▲</button>
+  <button class="dpad-btn" id="dUR">↗</button>
+  <button class="dpad-btn" id="dLeft">◀</button>
+  <button class="dpad-btn" id="dCenter">•</button>
+  <button class="dpad-btn" id="dRight">▶</button>
+  <button class="dpad-btn" id="dDL">↙</button>
+  <button class="dpad-btn" id="dDown">▼</button>
+  <button class="dpad-btn" id="dDR">↘</button>
+</div>
+
+<!-- Action buttons -->
+<div id="actions">
+  <button class="act-btn" id="btnShoot">🎫 SHOOT TICKET</button>
+  <button class="act-btn" id="btnSplat">🪲 SPLAT BUG</button>
+  <button class="act-btn" id="btnPickup">🗑️ PICK UP LITTER</button>
+</div>
+
+<div id="miniLog"></div>
+<div id="litter-bar">Carrying: <span id="carryCount">0</span> pieces</div>
+
+<!-- Modal -->
+<div id="msgBox">
+  <h2 id="msgTitle"></h2>
+  <div class="prize" id="msgPrize"></div>
+  <p id="msgBody"></p>
+  <button id="msgBtn" onclick="nextAction()">Continue</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// LITTER BUG SPLAT - Full 3D Game
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+let W = window.innerWidth, H = window.innerHeight;
+
+// Three.js setup
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 30, 80);
+
+const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 200);
+camera.position.set(0, 12, 14);
+camera.lookAt(0, 0, 0);
+
+window.addEventListener('resize', () => {
+  W = window.innerWidth; H = window.innerHeight;
+  renderer.setSize(W, H);
+  camera.aspect = W/H; camera.updateProjectionMatrix();
+});
+
+// ============================================================
+// LEVEL DEFINITIONS
+// ============================================================
+const LEVELS = [
+  // Level 1 - Tutorial (extremely easy)
+  { bugs:2, pedestrians:1, bugSpeed:0.018, litterRate:220, arenaSize:20, ticketSpeed:0.25 },
+  // Level 2
+  { bugs:3, pedestrians:2, bugSpeed:0.024, litterRate:190, arenaSize:22, ticketSpeed:0.28 },
+  // Level 3
+  { bugs:4, pedestrians:3, bugSpeed:0.030, litterRate:165, arenaSize:24, ticketSpeed:0.30 },
+  // Level 4
+  { bugs:5, pedestrians:3, bugSpeed:0.036, litterRate:145, arenaSize:26, ticketSpeed:0.32 },
+  // Level 5 - Medium
+  { bugs:6, pedestrians:4, bugSpeed:0.044, litterRate:120, arenaSize:28, ticketSpeed:0.34 },
+  // Level 6
+  { bugs:7, pedestrians:5, bugSpeed:0.052, litterRate:100, arenaSize:28, ticketSpeed:0.36 },
+  // Level 7
+  { bugs:8, pedestrians:6, bugSpeed:0.060, litterRate:85, arenaSize:30, ticketSpeed:0.38 },
+  // Level 8 - Hard
+  { bugs:10, pedestrians:7, bugSpeed:0.070, litterRate:70, arenaSize:30, ticketSpeed:0.40 },
+  // Level 9 - Very Hard
+  { bugs:12, pedestrians:8, bugSpeed:0.082, litterRate:55, arenaSize:32, ticketSpeed:0.42 },
+  // Level 10 - Extremely Hard
+  { bugs:15, pedestrians:10, bugSpeed:0.096, litterRate:40, arenaSize:34, ticketSpeed:0.44 },
+];
+
+const PRIZES = [
+  { emoji:'🥉', name:'Bronze Litter-Picker Badge', desc:'You cleaned up your first area. The park benches look happy!' },
+  { emoji:'🌟', name:'Silver Shine Award', desc:'The pigeons are confused by how clean it is!' },
+  { emoji:'🎖️', name:'Eco Warrior Medal', desc:'Three cheers for the environment!' },
+  { emoji:'🌿', name:'Green Guardian Trophy', desc:'Plants are literally growing faster because of you.' },
+  { emoji:'🦸', name:'Captain Clean Cape', desc:'Half way there! Citizens cheer your name!' },
+  { emoji:'🏅', name:'Gold Anti-Litter Shield', desc:'You are a legend among park-keepers!' },
+  { emoji:'🌍', name:'Earth Protector Crown', desc:'The Earth sends its thanks (via its lawyers).' },
+  { emoji:'⚡', name:'Turbo Ticket Master Badge', desc:'Your ticket aim is feared throughout the land!' },
+  { emoji:'💎', name:'Diamond Dustbin Trophy', desc:'One more level stands between you and glory!' },
+  { emoji:'🏆', name:'ULTIMATE LITTER SPLAT CHAMPION!', desc:'You have defeated ALL the litter bugs! The world is clean. A small parade was organised in your honour. Congratulations!' },
+];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let currentLevel = 0;
+let score = 0;
+let carrying = 0; // litter pieces held
+let bugs = [];
+let pedestrians = [];
+let litters = [];
+let tickets = []; // flying tickets
+let explosions = [];
+let levelComplete = false;
+let gameOver = false;
+let msgAction = null;
+let arenaSize = 20;
+
+// Input state
+const keys = {};
+const dpadState = {};
+
+// Player
+let player;
+let playerDir = new THREE.Vector3(0,0,-1);
+let playerSpeed = 0.09;
+let playerAngle = 0;
+
+// ============================================================
+// LIGHTING
+// ============================================================
+const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambLight);
+const sunLight = new THREE.DirectionalLight(0xffffcc, 1.0);
+sunLight.position.set(20, 40, 20);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 100;
+sunLight.shadow.camera.left = -50;
+sunLight.shadow.camera.right = 50;
+sunLight.shadow.camera.top = 50;
+sunLight.shadow.camera.bottom = -50;
+scene.add(sunLight);
+
+// ============================================================
+// GEOMETRY HELPERS
+// ============================================================
+function makeCylinder(rt, rb, h, segs, color, emissive) {
+  const g = new THREE.CylinderGeometry(rt, rb, h, segs);
+  const m = new THREE.MeshLambertMaterial({ color });
+  if (emissive) m.emissive = new THREE.Color(emissive);
+  return new THREE.Mesh(g, m);
+}
+function makeBox(w,h,d,color) {
+  const g = new THREE.BoxGeometry(w,h,d);
+  const m = new THREE.MeshLambertMaterial({ color });
+  return new THREE.Mesh(g,m);
+}
+function makeSphere(r, segs, color) {
+  const g = new THREE.SphereGeometry(r, segs, segs);
+  const m = new THREE.MeshLambertMaterial({ color });
+  return new THREE.Mesh(g,m);
+}
+
+// ============================================================
+// BUILD ARENA
+// ============================================================
+let arenaGroup;
+function buildArena(size) {
+  if (arenaGroup) scene.remove(arenaGroup);
+  arenaGroup = new THREE.Group();
+
+  // Ground
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(size*2+4, size*2+4, 20, 20),
+    new THREE.MeshLambertMaterial({ color: 0x4a7c3f })
+  );
+  ground.rotation.x = -Math.PI/2;
+  ground.receiveShadow = true;
+  arenaGroup.add(ground);
+
+  // Path (lighter)
+  const path = new THREE.Mesh(
+    new THREE.PlaneGeometry(size*1.6, size*1.6),
+    new THREE.MeshLambertMaterial({ color: 0x8a7a60 })
+  );
+  path.rotation.x = -Math.PI/2;
+  path.position.y = 0.01;
+  arenaGroup.add(path);
+
+  // Walls / hedges
+  const hedgeMat = new THREE.MeshLambertMaterial({ color: 0x2d5a1b });
+  for (let i = -size; i <= size; i += 4) {
+    // Top wall
+    const t = new THREE.Mesh(new THREE.BoxGeometry(4.1,2,1.5), hedgeMat);
+    t.position.set(i, 1, -size); t.castShadow = true; arenaGroup.add(t);
+    // Bottom
+    const b = t.clone(); b.position.set(i,1,size); arenaGroup.add(b);
+    // Left
+    const l = new THREE.Mesh(new THREE.BoxGeometry(1.5,2,4.1), hedgeMat);
+    l.position.set(-size,1,i); l.castShadow = true; arenaGroup.add(l);
+    // Right
+    const r = l.clone(); r.position.set(size,1,i); arenaGroup.add(r);
+  }
+
+  // Trees
+  const treePositions = [];
+  const count = Math.floor(size/3);
+  for (let i=0; i<count; i++) {
+    const angle = (i/count)*Math.PI*2;
+    const dist = size*0.72 + (Math.random()-0.5)*4;
+    treePositions.push([Math.cos(angle)*dist, Math.sin(angle)*dist]);
+  }
+  treePositions.forEach(([x,z]) => {
+    const trunk = makeCylinder(0.2,0.3,2,6,0x5c3d1e);
+    trunk.position.set(x,1,z); trunk.castShadow=true; arenaGroup.add(trunk);
+    const foliage = makeSphere(1.3+Math.random()*0.5, 7, 0x228B22);
+    foliage.position.set(x,2.8+Math.random(),z); foliage.castShadow=true; arenaGroup.add(foliage);
+  });
+
+  // Benches
+  for (let i=0; i<4; i++) {
+    const a = (i/4)*Math.PI*2;
+    const bx = Math.cos(a)*size*0.5, bz = Math.sin(a)*size*0.5;
+    const bench = makeBox(2,0.15,0.6,0x8B5E3C);
+    bench.position.set(bx,0.4,bz); bench.rotation.y=a; arenaGroup.add(bench);
+    const leg1 = makeBox(0.15,0.4,0.6,0x5c3d1e);
+    leg1.position.set(bx-0.7*Math.cos(a),0.2,bz-0.7*Math.sin(a)); arenaGroup.add(leg1);
+    const leg2 = leg1.clone();
+    leg2.position.set(bx+0.7*Math.cos(a),0.2,bz+0.7*Math.sin(a)); arenaGroup.add(leg2);
+  }
+
+  // Bin
+  const bin = makeCylinder(0.3,0.25,0.8,8,0x333333);
+  bin.position.set(size*0.3,0.4,0); arenaGroup.add(bin);
+
+  scene.add(arenaGroup);
+}
+
+// ============================================================
+// PLAYER
+// ============================================================
+function createPlayer() {
+  const group = new THREE.Group();
+  // Body
+  const body = makeCylinder(0.3,0.35,1.0,8,0x2244cc);
+  body.position.y = 0.5; group.add(body);
+  // Head
+  const head = makeSphere(0.35,8,0xffccaa);
+  head.position.y = 1.35; group.add(head);
+  // Hat (warden)
+  const hatBrim = makeCylinder(0.5,0.5,0.08,10,0x222222);
+  hatBrim.position.y = 1.65; group.add(hatBrim);
+  const hatTop = makeCylinder(0.3,0.3,0.4,10,0x222222);
+  hatTop.position.y = 1.85; group.add(hatTop);
+  // Badge
+  const badge = makeBox(0.2,0.15,0.05,0xffdd00);
+  badge.position.set(0,0.75,0.36); group.add(badge);
+  // Arms
+  const armL = makeCylinder(0.1,0.1,0.6,5,0x2244cc);
+  armL.rotation.z = Math.PI/4; armL.position.set(-0.5,0.7,0); group.add(armL);
+  const armR = armL.clone(); armR.rotation.z=-Math.PI/4;
+  armR.position.set(0.5,0.7,0); group.add(armR);
+  // Legs
+  const legL = makeCylinder(0.12,0.12,0.7,5,0x111166);
+  legL.position.set(-0.18,0,0); group.add(legL);
+  const legR = legL.clone(); legR.position.set(0.18,0,0); group.add(legR);
+  group.castShadow = true;
+  scene.add(group);
+  return group;
+}
+
+// ============================================================
+// BUG
+// ============================================================
+function createBug(x,z,speed) {
+  const group = new THREE.Group();
+  // Body (green oval)
+  const body = makeCylinder(0.35,0.35,0.25,10,0x33cc00);
+  body.rotation.x = Math.PI/2;
+  body.position.y=0.3; group.add(body);
+  // Head
+  const head = makeSphere(0.25,7,0x22aa00,0x003300);
+  head.position.set(0,0.3,0.4); group.add(head);
+  // Eyes (red!)
+  const eyeL = makeSphere(0.08,5,0xff0000);
+  eyeL.position.set(-0.12,0.42,0.6); group.add(eyeL);
+  const eyeR = eyeL.clone(); eyeR.position.set(0.12,0.42,0.6); group.add(eyeR);
+  // Antennae
+  for (let s of [-1,1]) {
+    const ant = makeCylinder(0.02,0.02,0.5,4,0x009900);
+    ant.rotation.z = s*0.5; ant.position.set(s*0.15,0.6,0.35); group.add(ant);
+    const tip = makeSphere(0.06,4,0xffff00);
+    tip.position.set(s*0.38,0.85,0.3); group.add(tip);
+  }
+  // 6 legs
+  for (let i=0; i<3; i++) {
+    for (let s of [-1,1]) {
+      const leg = makeCylinder(0.03,0.03,0.5,4,0x009900);
+      leg.rotation.z = s*Math.PI/2.5;
+      leg.position.set(s*0.35,0.15,(i-1)*0.25); group.add(leg);
+    }
+  }
+  // Bag of litter
+  const bag = makeBox(0.3,0.25,0.25,0x996633);
+  bag.position.set(0,0.4,-0.4); group.add(bag);
+
+  group.position.set(x,0,z);
+  group.castShadow=true;
+  scene.add(group);
+
+  const liveData = {
+    mesh: group,
+    speed: speed,
+    angle: Math.random()*Math.PI*2,
+    turnTimer: 0,
+    turnInterval: 80+Math.random()*120,
+    litterTimer: 0,
+    alive: true,
+    id: Math.random()
+  };
+  return liveData;
+}
+
+// ============================================================
+// PEDESTRIAN
+// ============================================================
+const PED_COLORS = [0xff6699,0x6699ff,0xff9933,0x99ff66,0xcc66ff,0xff4444,0x44ffff];
+function createPedestrian(x,z) {
+  const group = new THREE.Group();
+  const col = PED_COLORS[Math.floor(Math.random()*PED_COLORS.length)];
+  const body = makeCylinder(0.25,0.28,0.9,8,col);
+  body.position.y=0.45; group.add(body);
+  const head = makeSphere(0.28,8,0xffccaa);
+  head.position.y=1.2; group.add(head);
+  // hair
+  const hair = makeSphere(0.29,7,Math.random()>0.5?0x331100:0xffdd99);
+  hair.position.y=1.3; group.add(hair);
+  // legs
+  const lL = makeCylinder(0.1,0.1,0.6,5,0x334455);
+  lL.position.set(-0.15,0,0); group.add(lL);
+  const lR=lL.clone(); lR.position.set(0.15,0,0); group.add(lR);
+  group.position.set(x,0,z);
+  group.castShadow=true;
+  scene.add(group);
+  return {
+    mesh: group, angle: Math.random()*Math.PI*2,
+    speed: 0.014+Math.random()*0.01,
+    turnTimer:0, turnInterval:60+Math.random()*100,
+    alive: true
+  };
+}
+
+// ============================================================
+// LITTER
+// ============================================================
+const LITTER_TYPES = [
+  { color:0xff4444, geo: new THREE.BoxGeometry(0.2,0.08,0.12) }, // can
+  { color:0xffd700, geo: new THREE.SphereGeometry(0.1,5,5) },    // crisp
+  { color:0xffffff, geo: new THREE.BoxGeometry(0.18,0.02,0.24) },// paper
+  { color:0x33aaff, geo: new THREE.CylinderGeometry(0.07,0.07,0.22,6) }, // bottle
+];
+function dropLitter(x,z) {
+  const t = LITTER_TYPES[Math.floor(Math.random()*LITTER_TYPES.length)];
+  const mesh = new THREE.Mesh(t.geo, new THREE.MeshLambertMaterial({color:t.color}));
+  mesh.position.set(x+( Math.random()-0.5)*0.4, 0.05, z+(Math.random()-0.5)*0.4);
+  mesh.rotation.y = Math.random()*Math.PI*2;
+  scene.add(mesh);
+  litters.push({ mesh, x:mesh.position.x, z:mesh.position.z });
+}
+
+// ============================================================
+// TICKET PROJECTILE
+// ============================================================
+function shootTicket(fromX, fromZ, dx, dz, speed) {
+  const g = new THREE.BoxGeometry(0.3,0.02,0.2);
+  const m = new THREE.MeshLambertMaterial({ color:0xffff88, emissive:0xaaaa00 });
+  const mesh = new THREE.Mesh(g,m);
+  mesh.position.set(fromX, 1.0, fromZ);
+  scene.add(mesh);
+  const angle = Math.atan2(dx,dz);
+  tickets.push({ mesh, dx, dz, speed, alive:true });
+}
+
+// ============================================================
+// EXPLOSION (visual)
+// ============================================================
+function spawnExplosion(x, z, color) {
+  for (let i=0; i<10; i++) {
+    const s = makeSphere(0.12+Math.random()*0.1, 5, color);
+    s.position.set(x+(Math.random()-0.5)*0.5, 0.5+Math.random(), z+(Math.random()-0.5)*0.5);
+    scene.add(s);
+    explosions.push({ mesh:s, life:30, vx:(Math.random()-0.5)*0.08, vy:0.05+Math.random()*0.05, vz:(Math.random()-0.5)*0.08 });
+  }
+}
+
+// ============================================================
+// LOG MESSAGE
+// ============================================================
+let logTimer=0;
+function showLog(msg) {
+  const el = document.getElementById('miniLog');
+  el.textContent = msg;
+  el.style.opacity='1';
+  logTimer=120;
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function showModal(title,prize,body,btnText,action) {
+  document.getElementById('msgTitle').textContent = title;
+  document.getElementById('msgPrize').textContent = prize;
+  document.getElementById('msgBody').textContent = body;
+  document.getElementById('msgBtn').textContent = btnText;
+  document.getElementById('msgBox').style.display='block';
+  msgAction = action;
+}
+function hideModal() {
+  document.getElementById('msgBox').style.display='none';
+}
+function nextAction() {
+  hideModal();
+  if (msgAction) msgAction();
+}
+
+// ============================================================
+// LEVEL INIT
+// ============================================================
+function initLevel(lvlIdx) {
+  // Clear previous objects
+  bugs.forEach(b=>{if(b.mesh)scene.remove(b.mesh)});
+  pedestrians.forEach(p=>{if(p.mesh)scene.remove(p.mesh)});
+  litters.forEach(l=>{if(l.mesh)scene.remove(l.mesh)});
+  tickets.forEach(t=>{if(t.mesh)scene.remove(t.mesh)});
+  explosions.forEach(e=>{if(e.mesh)scene.remove(e.mesh)});
+  bugs=[]; pedestrians=[]; litters=[]; tickets=[]; explosions=[];
+  carrying=0; levelComplete=false;
+
+  const cfg = LEVELS[lvlIdx];
+  arenaSize = cfg.arenaSize;
+  buildArena(arenaSize);
+
+  // Player
+  if (player) scene.remove(player);
+  player = createPlayer();
+  player.position.set(0,0,0);
+  playerAngle = 0;
+
+  // Bugs
+  for (let i=0; i<cfg.bugs; i++) {
+    const angle = (i/cfg.bugs)*Math.PI*2;
+    const r = arenaSize*0.4 + Math.random()*arenaSize*0.2;
+    bugs.push(createBug(Math.cos(angle)*r, Math.sin(angle)*r, cfg.bugSpeed));
+  }
+
+  // Pedestrians
+  for (let i=0; i<cfg.pedestrians; i++) {
+    const angle = Math.random()*Math.PI*2;
+    const r = arenaSize*0.2 + Math.random()*arenaSize*0.35;
+    pedestrians.push(createPedestrian(Math.cos(angle)*r, Math.sin(angle)*r));
+  }
+
+  updateHUD();
+  document.getElementById('carryCount').textContent = '0';
+}
+
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('bugsLeft').textContent = bugs.filter(b=>b.alive).length;
+  document.getElementById('litterCount').textContent = litters.length;
+  document.getElementById('lvlNum').textContent = currentLevel+1;
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+const dpadMap = {
+  dUp:    [0,-1],    dDown:  [0,1],
+  dLeft:  [-1,0],   dRight: [1,0],
+  dUL:    [-0.707,-0.707], dUR: [0.707,-0.707],
+  dDL:    [-0.707,0.707],  dDR: [0.707,0.707],
+};
+Object.keys(dpadMap).forEach(id => {
+  const btn = document.getElementById(id);
+  btn.addEventListener('pointerdown', e=>{ e.preventDefault(); dpadState[id]=true; btn.classList.add('pressed'); });
+  btn.addEventListener('pointerup',   e=>{ dpadState[id]=false; btn.classList.remove('pressed'); });
+  btn.addEventListener('pointerleave',e=>{ dpadState[id]=false; btn.classList.remove('pressed'); });
+});
+
+document.addEventListener('keydown', e=>{ keys[e.code]=true; });
+document.addEventListener('keyup',   e=>{ keys[e.code]=false; });
+
+document.getElementById('btnShoot').addEventListener('click', () => actionShoot());
+document.getElementById('btnSplat').addEventListener('click', () => actionSplat());
+document.getElementById('btnPickup').addEventListener('click', () => actionPickup());
+
+document.addEventListener('keydown', e => {
+  if (e.code==='Space') actionShoot();
+  if (e.code==='KeyE') actionSplat();
+  if (e.code==='KeyQ') actionPickup();
+});
+
+function getInputDir() {
+  let dx=0, dz=0;
+  // Keyboard
+  if (keys['ArrowUp']||keys['KeyW']) dz-=1;
+  if (keys['ArrowDown']||keys['KeyS']) dz+=1;
+  if (keys['ArrowLeft']||keys['KeyA']) dx-=1;
+  if (keys['ArrowRight']||keys['KeyD']) dx+=1;
+  // D-pad
+  Object.keys(dpadMap).forEach(id => {
+    if (dpadState[id]) { dx+=dpadMap[id][0]; dz+=dpadMap[id][1]; }
+  });
+  // Normalise
+  const len = Math.sqrt(dx*dx+dz*dz);
+  if (len>0) { dx/=len; dz/=len; }
+  return [dx, dz];
+}
+
+// ============================================================
+// ACTIONS
+// ============================================================
+function actionPickup() {
+  if (levelComplete||gameOver) return;
+  const px = player.position.x, pz = player.position.z;
+  let picked=0;
+  litters = litters.filter(l => {
+    const d = Math.sqrt((l.x-px)**2+(l.z-pz)**2);
+    if (d<1.5) { scene.remove(l.mesh); picked++; return false; }
+    return true;
+  });
+  if (picked>0) {
+    carrying += picked;
+    score += picked*2;
+    document.getElementById('carryCount').textContent = carrying;
+    showLog(`✅ Picked up ${picked} piece${picked>1?'s':''} of litter! +${picked*2}pts`);
+    updateHUD();
+  } else {
+    showLog('No litter nearby! Walk closer to litter first.');
+  }
+}
+
+function actionSplat() {
+  if (levelComplete||gameOver) return;
+  if (carrying===0) { showLog('⚠️ Carry litter first (pick it up), then splat the bug!'); return; }
+  const px=player.position.x, pz=player.position.z;
+  let hit=false;
+  bugs.forEach(bug=>{
+    if (!bug.alive) return;
+    const bx=bug.mesh.position.x, bz=bug.mesh.position.z;
+    const d=Math.sqrt((bx-px)**2+(bz-pz)**2);
+    if (d<2.0 && !hit) {
+      hit=true;
+      bug.alive=false;
+      spawnExplosion(bx,bz,0x33ff00);
+      scene.remove(bug.mesh);
+      carrying=Math.max(0,carrying-1);
+      score+=15;
+      document.getElementById('carryCount').textContent=carrying;
+      showLog('🪲 SPLAT! Bug given ticket by hand! +15pts');
+      updateHUD();
+      checkLevelComplete();
+    }
+  });
+  if (!hit) showLog('No bug in range! Get closer to a bug.');
+}
+
+function actionShoot() {
+  if (levelComplete||gameOver) return;
+  const cfg = LEVELS[currentLevel];
+  // shoot in player's facing direction
+  const dx = Math.sin(playerAngle);
+  const dz = Math.cos(playerAngle);
+  shootTicket(player.position.x, player.position.z, dx, dz, cfg.ticketSpeed);
+  showLog('🎫 Ticket fired!');
+}
+
+// ============================================================
+// CHECK LEVEL
+// ============================================================
+function checkLevelComplete() {
+  if (bugs.filter(b=>b.alive).length===0 && !levelComplete) {
+    levelComplete=true;
+    const p = PRIZES[currentLevel];
+    setTimeout(()=>{
+      showModal(
+        currentLevel===9 ? '🏆 YOU WIN THE GAME!' : `✅ Level ${currentLevel+1} Complete!`,
+        p.emoji,
+        `You earned: ${p.name}\n\n${p.desc}\n\nScore: ${score} pts`,
+        currentLevel===9 ? '🎉 Play Again!' : `➡️ Level ${currentLevel+2}`,
+        () => {
+          if (currentLevel===9) {
+            score=0; currentLevel=0;
+          } else {
+            currentLevel++;
+          }
+          initLevel(currentLevel);
+        }
+      );
+    }, 800);
+  }
+}
+
+// ============================================================
+// UPDATE AGENTS
+// ============================================================
+function updateBugs(cfg) {
+  bugs.forEach(bug=>{
+    if (!bug.alive) return;
+    bug.turnTimer++;
+    if (bug.turnTimer>bug.turnInterval) {
+      bug.angle = Math.random()*Math.PI*2;
+      bug.turnTimer=0;
+      bug.turnInterval=60+Math.random()*120;
+    }
+    const dx=Math.sin(bug.angle)*bug.speed;
+    const dz=Math.cos(bug.angle)*bug.speed;
+    const nx=bug.mesh.position.x+dx, nz=bug.mesh.position.z+dz;
+    const bound=arenaSize-1.5;
+    if (Math.abs(nx)<bound && Math.abs(nz)<bound) {
+      bug.mesh.position.x=nx; bug.mesh.position.z=nz;
+    } else {
+      bug.angle+=Math.PI+Math.random()-0.5;
+    }
+    bug.mesh.rotation.y = bug.angle;
+
+    // Drop litter
+    bug.litterTimer++;
+    if (bug.litterTimer>cfg.litterRate) {
+      bug.litterTimer=0;
+      dropLitter(bug.mesh.position.x, bug.mesh.position.z);
+      updateHUD();
+    }
+    // Wobble legs
+    bug.mesh.children.forEach((c,i)=>{
+      if (i>7) c.rotation.x = Math.sin(Date.now()*0.01+i)*0.3;
+    });
+  });
+}
+
+function updatePedestrians() {
+  pedestrians.forEach(ped=>{
+    if (!ped.alive) return;
+    ped.turnTimer++;
+    if (ped.turnTimer>ped.turnInterval) {
+      ped.angle+=( Math.random()-0.5)*Math.PI;
+      ped.turnTimer=0;
+      ped.turnInterval=60+Math.random()*100;
+    }
+    const dx=Math.sin(ped.angle)*ped.speed;
+    const dz=Math.cos(ped.angle)*ped.speed;
+    const nx=ped.mesh.position.x+dx, nz=ped.mesh.position.z+dz;
+    const bound=arenaSize-2;
+    if (Math.abs(nx)<bound && Math.abs(nz)<bound) {
+      ped.mesh.position.x=nx; ped.mesh.position.z=nz;
+    } else {
+      ped.angle+=Math.PI;
+    }
+    ped.mesh.rotation.y=ped.angle;
+    // walk bob
+    ped.mesh.position.y = Math.sin(Date.now()*0.008+ped.angle)*0.05;
+  });
+}
+
+function updateTickets() {
+  tickets = tickets.filter(t=>{
+    if (!t.alive) { scene.remove(t.mesh); return false; }
+    t.mesh.position.x += t.dx*t.speed;
+    t.mesh.position.z += t.dz*t.speed;
+    t.mesh.rotation.y += 0.2;
+    // Out of bounds
+    if (Math.abs(t.mesh.position.x)>arenaSize||Math.abs(t.mesh.position.z)>arenaSize) {
+      scene.remove(t.mesh); return false;
+    }
+    const tx=t.mesh.position.x, tz=t.mesh.position.z;
+    // Hit bug?
+    let hitSomething=false;
+    bugs.forEach(bug=>{
+      if (!bug.alive||hitSomething) return;
+      const d=Math.sqrt((bug.mesh.position.x-tx)**2+(bug.mesh.position.z-tz)**2);
+      if (d<1.0) {
+        bug.alive=false;
+        scene.remove(bug.mesh);
+        spawnExplosion(bug.mesh.position.x,bug.mesh.position.z,0xffff00);
+        score+=10;
+        t.alive=false;
+        scene.remove(t.mesh);
+        hitSomething=true;
+        showLog('🎫 Bug hit with ticket! +10pts');
+        updateHUD();
+        checkLevelComplete();
+      }
+    });
+    // Hit pedestrian?
+    if (!hitSomething) {
+      pedestrians.forEach(ped=>{
+        if (!ped.alive||hitSomething) return;
+        const d=Math.sqrt((ped.mesh.position.x-tx)**2+(ped.mesh.position.z-tz)**2);
+        if (d<0.9) {
+          ped.alive=false;
+          scene.remove(ped.mesh);
+          spawnExplosion(ped.mesh.position.x,ped.mesh.position.z,0xff4444);
+          score=Math.max(0,score-30);
+          t.alive=false; hitSomething=true;
+          showLog('❌ HIT PEDESTRIAN! −30pts! They are innocent!');
+          updateHUD();
+        }
+      });
+    }
+    return t.alive;
+  });
+}
+
+function updateExplosions() {
+  explosions = explosions.filter(e=>{
+    e.life--;
+    e.mesh.position.x+=e.vx;
+    e.mesh.position.y+=e.vy;
+    e.mesh.position.z+=e.vz;
+    e.vy-=0.003;
+    const s=e.life/30;
+    e.mesh.scale.set(s,s,s);
+    if (e.life<=0){ scene.remove(e.mesh); return false; }
+    return true;
+  });
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let frameCount=0;
+function loop() {
+  requestAnimationFrame(loop);
+  frameCount++;
+  if (levelComplete||gameOver) {
+    renderer.render(scene,camera);
+    return;
+  }
+  const cfg = LEVELS[currentLevel];
+
+  // Player movement
+  const [idx, idz] = getInputDir();
+  if (idx!==0||idz!==0) {
+    playerAngle = Math.atan2(idx, idz);
+    const nx = player.position.x + idx*playerSpeed;
+    const nz = player.position.z + idz*playerSpeed;
+    const bound = arenaSize-1.2;
+    player.position.x = Math.max(-bound, Math.min(bound, nx));
+    player.position.z = Math.max(-bound, Math.min(bound, nz));
+    player.rotation.y = playerAngle;
+    // walk bounce
+    player.position.y = Math.sin(frameCount*0.2)*0.04;
+  }
+
+  // Camera follows player (isometric-ish overhead)
+  const camDist=14, camHeight=12;
+  camera.position.x = player.position.x + Math.sin(playerAngle)*0;
+  camera.position.z = player.position.z + camDist;
+  camera.position.y = camHeight;
+  camera.lookAt(player.position.x, 0, player.position.z);
+
+  // Auto-highlight nearby litter
+  if (frameCount%20===0) {
+    const px=player.position.x, pz=player.position.z;
+    let nearLitter=false;
+    litters.forEach(l=>{
+      const d=Math.sqrt((l.x-px)**2+(l.z-pz)**2);
+      if(d<1.5) nearLitter=true;
+      l.mesh.rotation.y+=0.05;
+    });
+  }
+
+  updateBugs(cfg);
+  updatePedestrians();
+  updateTickets();
+  updateExplosions();
+
+  // Litter pulse
+  litters.forEach(l=>{ l.mesh.rotation.y+=0.03; });
+
+  // Log fade
+  if (logTimer>0) { logTimer--; if(logTimer===0) document.getElementById('miniLog').style.opacity='0'; }
+
+  if (frameCount%30===0) updateHUD();
+
+  renderer.render(scene,camera);
+}
+
+// ============================================================
+// START
+// ============================================================
+showModal(
+  '🪲 LITTER BUG SPLAT!',
+  '🌍',
+  `MISSION: Clean up the park and issue tickets to litter bugs!\n\n` +
+  `🗑️ Walk over litter → press PICK UP LITTER\n` +
+  `🪲 Carry litter + get close → press SPLAT BUG (in-person ticket!)\n` +
+  `🎫 Face a bug → press SHOOT TICKET (ranged attack)\n` +
+  `🚶 DO NOT shoot pedestrians (−30 pts!)\n\n` +
+  `Keyboard: WASD/Arrows to move, SPACE to shoot, E to splat, Q to pick up`,
+  '🎮 Start Game!',
+  () => { initLevel(0); loop(); }
+);
+</script>
+</body>
+</html>
